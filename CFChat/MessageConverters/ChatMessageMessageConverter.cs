@@ -19,10 +19,8 @@ namespace CFChat.MessageConverters
         {
             var connectionMessage = new ConnectionMessage()
             {
-                Id = Guid.NewGuid().ToString(),
-                TypeId = MessageTypeIds.ChatMessage,
-                //SenderIP = "",
-                //SenderPort = 0,
+                Id = chatMessage.Id,
+                TypeId = MessageTypeIds.ChatMessage,                
                 Parameters = new List<ConnectionMessageParameter>()
                 {
                     new ConnectionMessageParameter()

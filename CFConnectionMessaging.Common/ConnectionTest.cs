@@ -23,7 +23,7 @@ namespace CFConnectionMessaging
         public void TestOneMessageInSinglePacket()
         {
             // Start connection
-            var connection = new Connection();
+            var connection = new ConnectionUdp();
             //connection.StartTest();
 
             var message1 = new ConnectionMessage()
@@ -58,7 +58,7 @@ namespace CFConnectionMessaging
         public void TestOnMessageInMultiplePackets()
         {
             // Start connection
-            var connection = new Connection();
+            var connection = new ConnectionUdp();
             //connection.StartTest();
 
             // Set message to send
@@ -105,7 +105,7 @@ namespace CFConnectionMessaging
         public void TestMultipleMessagesInMultiplePackets()
         {
             // Start connection
-            var connection = new Connection();
+            var connection = new ConnectionUdp();
             connection.OnConnectionMessageReceived += (connectionMessage, messageReceivedInfo) =>
             {
                 System.Diagnostics.Debug.WriteLine($"Received connection message: ID={connectionMessage.Id}");

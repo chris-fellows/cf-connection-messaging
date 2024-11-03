@@ -30,10 +30,16 @@
         {
             System.ComponentModel.ComponentResourceManager resources = new System.ComponentModel.ComponentResourceManager(typeof(ConversationControl));
             toolStrip1 = new ToolStrip();
-            tsbSend = new ToolStripButton();
+            tsbSendMessage = new ToolStripButton();
+            tsbSendFile = new ToolStripButton();
+            tsbOpenReceivedFilesFolder = new ToolStripButton();
+            tstxtRemotePort = new ToolStripTextBox();
+            toolStripLabel2 = new ToolStripLabel();
+            tstxtRemoteIP = new ToolStripTextBox();
+            toolStripLabel1 = new ToolStripLabel();
             splitContainer1 = new SplitContainer();
-            txtMessage = new TextBox();
             lstMessage = new ListView();
+            txtMessage = new TextBox();
             toolStrip1.SuspendLayout();
             ((System.ComponentModel.ISupportInitialize)splitContainer1).BeginInit();
             splitContainer1.Panel1.SuspendLayout();
@@ -43,21 +49,65 @@
             // 
             // toolStrip1
             // 
-            toolStrip1.Items.AddRange(new ToolStripItem[] { tsbSend });
+            toolStrip1.Items.AddRange(new ToolStripItem[] { tsbSendMessage, tsbSendFile, tsbOpenReceivedFilesFolder, tstxtRemotePort, toolStripLabel2, tstxtRemoteIP, toolStripLabel1 });
             toolStrip1.Location = new Point(0, 0);
             toolStrip1.Name = "toolStrip1";
             toolStrip1.Size = new Size(1023, 25);
             toolStrip1.TabIndex = 0;
             toolStrip1.Text = "toolStrip1";
             // 
-            // tsbSend
+            // tsbSendMessage
             // 
-            tsbSend.Image = (Image)resources.GetObject("tsbSend.Image");
-            tsbSend.ImageTransparentColor = Color.Magenta;
-            tsbSend.Name = "tsbSend";
-            tsbSend.Size = new Size(53, 22);
-            tsbSend.Text = "Send";
-            tsbSend.Click += tsbSend_Click;
+            tsbSendMessage.Image = (Image)resources.GetObject("tsbSendMessage.Image");
+            tsbSendMessage.ImageTransparentColor = Color.Magenta;
+            tsbSendMessage.Name = "tsbSendMessage";
+            tsbSendMessage.Size = new Size(53, 22);
+            tsbSendMessage.Text = "Send";
+            tsbSendMessage.Click += tsbSend_Click;
+            // 
+            // tsbSendFile
+            // 
+            tsbSendFile.Image = (Image)resources.GetObject("tsbSendFile.Image");
+            tsbSendFile.ImageTransparentColor = Color.Magenta;
+            tsbSendFile.Name = "tsbSendFile";
+            tsbSendFile.Size = new Size(72, 22);
+            tsbSendFile.Text = "Send file";
+            tsbSendFile.Click += tsbSendFile_Click;
+            // 
+            // tsbOpenReceivedFilesFolder
+            // 
+            tsbOpenReceivedFilesFolder.Image = (Image)resources.GetObject("tsbOpenReceivedFilesFolder.Image");
+            tsbOpenReceivedFilesFolder.ImageTransparentColor = Color.Magenta;
+            tsbOpenReceivedFilesFolder.Name = "tsbOpenReceivedFilesFolder";
+            tsbOpenReceivedFilesFolder.Size = new Size(161, 22);
+            tsbOpenReceivedFilesFolder.Text = "Open received files folder";
+            tsbOpenReceivedFilesFolder.Click += tsbOpenReceivedFilesFolder_Click;
+            // 
+            // tstxtRemotePort
+            // 
+            tstxtRemotePort.Alignment = ToolStripItemAlignment.Right;
+            tstxtRemotePort.Name = "tstxtRemotePort";
+            tstxtRemotePort.Size = new Size(70, 25);
+            // 
+            // toolStripLabel2
+            // 
+            toolStripLabel2.Alignment = ToolStripItemAlignment.Right;
+            toolStripLabel2.Name = "toolStripLabel2";
+            toolStripLabel2.Size = new Size(76, 22);
+            toolStripLabel2.Text = "Remote Port:";
+            // 
+            // tstxtRemoteIP
+            // 
+            tstxtRemoteIP.Alignment = ToolStripItemAlignment.Right;
+            tstxtRemoteIP.Name = "tstxtRemoteIP";
+            tstxtRemoteIP.Size = new Size(120, 25);
+            // 
+            // toolStripLabel1
+            // 
+            toolStripLabel1.Alignment = ToolStripItemAlignment.Right;
+            toolStripLabel1.Name = "toolStripLabel1";
+            toolStripLabel1.Size = new Size(64, 22);
+            toolStripLabel1.Text = "Remote IP:";
             // 
             // splitContainer1
             // 
@@ -74,27 +124,28 @@
             // 
             splitContainer1.Panel2.Controls.Add(txtMessage);
             splitContainer1.Size = new Size(1023, 621);
-            splitContainer1.SplitterDistance = 341;
+            splitContainer1.SplitterDistance = 501;
             splitContainer1.TabIndex = 1;
-            // 
-            // txtMessage
-            // 
-            txtMessage.Dock = DockStyle.Fill;
-            txtMessage.Location = new Point(0, 0);
-            txtMessage.Multiline = true;
-            txtMessage.Name = "txtMessage";
-            txtMessage.Size = new Size(1023, 276);
-            txtMessage.TabIndex = 0;
-            txtMessage.TextChanged += txtMessage_TextChanged;
             // 
             // lstMessage
             // 
-            lstMessage.Dock = DockStyle.Fill;
-            lstMessage.Location = new Point(0, 0);
+            lstMessage.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            lstMessage.Location = new Point(0, 3);
             lstMessage.Name = "lstMessage";
-            lstMessage.Size = new Size(1023, 341);
+            lstMessage.Size = new Size(1023, 498);
             lstMessage.TabIndex = 0;
             lstMessage.UseCompatibleStateImageBehavior = false;
+            lstMessage.View = View.List;
+            // 
+            // txtMessage
+            // 
+            txtMessage.Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right;
+            txtMessage.Location = new Point(0, 0);
+            txtMessage.Multiline = true;
+            txtMessage.Name = "txtMessage";
+            txtMessage.Size = new Size(1023, 116);
+            txtMessage.TabIndex = 0;
+            txtMessage.TextChanged += txtMessage_TextChanged;
             // 
             // ConversationControl
             // 
@@ -120,7 +171,13 @@
         private ToolStrip toolStrip1;
         private SplitContainer splitContainer1;
         private TextBox txtMessage;
-        private ToolStripButton tsbSend;
+        private ToolStripButton tsbSendMessage;
         private ListView lstMessage;
+        private ToolStripButton tsbSendFile;
+        private ToolStripButton tsbOpenReceivedFilesFolder;
+        private ToolStripLabel toolStripLabel1;
+        private ToolStripTextBox tstxtRemoteIP;
+        private ToolStripLabel toolStripLabel2;
+        private ToolStripTextBox tstxtRemotePort;
     }
 }

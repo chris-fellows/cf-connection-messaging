@@ -19,7 +19,7 @@ namespace CFChat.MessageConverters
         {
             var connectionMessage = new ConnectionMessage()
             {
-                Id = Guid.NewGuid().ToString(),
+                Id = chatFile.Id,
                 TypeId = MessageTypeIds.ChatFile,
                 Parameters = new List<ConnectionMessageParameter>()
                 {

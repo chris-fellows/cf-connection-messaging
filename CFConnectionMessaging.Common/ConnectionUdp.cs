@@ -6,14 +6,14 @@ using System.Net;
 namespace CFConnectionMessaging
 {
     /// <summary>
-    /// Connection for UDP data.
+    /// Connection for ConnectionMessage instances with transport via UDP.
     /// 
     /// Notes:
     /// - Thread listens for packets and adds them to queue.
     /// - Thread processes queue packets and deserializes them in to messages.
     /// - This class is thread safe so that multiple clients can use it simultaneously.
     /// </summary>
-    public class Connection
+    public class ConnectionUdp
     {        
         private List<Packet> _packets = new List<Packet>();
         private Thread? _receiveThread;
@@ -107,7 +107,7 @@ namespace CFConnectionMessaging
                     ProcessPackets();
                 }
 
-                Thread.Sleep(50);
+                Thread.Sleep(10);
             }
         }
 
@@ -133,21 +133,30 @@ namespace CFConnectionMessaging
                 */
 
                 // Receive packet
-                var result = udpClient.ReceiveAsync(_cancellationTokenSource.Token).Result;                
-
-                if (!_cancellationTokenSource.IsCancellationRequested)
+                try
                 {
-                    var packet = new Packet()
-                    {
-                        Data = result.Buffer,
-                        EndpointIP = result.RemoteEndPoint.Address.ToString(),
-                        EndpointPort = result.RemoteEndPoint.Port
-                    };
-                    _packets.Add(packet);
+                    var result = udpClient.ReceiveAsync(_cancellationTokenSource.Token).Result;
 
-                    Console.Write($"Received packet from {packet.EndpointIP}:{packet.EndpointPort}");
+                    if (!_cancellationTokenSource.IsCancellationRequested)
+                    {
+                        var packet = new Packet()
+                        {
+                            Data = result.Buffer,
+                            EndpointIP = result.RemoteEndPoint.Address.ToString(),
+                            EndpointPort = result.RemoteEndPoint.Port
+                        };
+                        _packets.Add(packet);
+
+                        Console.Write($"Received packet from {packet.EndpointIP}:{packet.EndpointPort}");
+                    }
                 }
-               
+                catch(OperationCanceledException ocException)   // Receive cancelled
+                {
+                    // No action
+                }
+
+                Thread.Sleep(10);
+
                 //Console.Write("receive data from " + remoteEP.ToString());
                 //udpServer.Send(new byte[] { 1 }, 1, remoteEP); // reply back
             }

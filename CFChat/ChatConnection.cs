@@ -9,35 +9,56 @@ using CFConnectionMessaging.Models;
 namespace CFChat
 {
     /// <summary>
-    /// Chat connection
+    /// Chat connection. Sends and receives chat messages via UDP connection.
+    /// 
+    /// The connection supports multiple conversations. Each message specifies a ConversationId so that the message
+    /// is routed to the correct IConversation.
     /// </summary>
     public class ChatConnection
     {
-        private Connection _connection;
+        private ConnectionUdp _connection;
         
-        /// <summary>
-        /// Event for chat message received
-        /// </summary>
-        /// <param name="chatMessage"></param>
-        public delegate void ChatMessageReceived(ChatMessage chatMessage, MessageReceivedInfo messageReceivedInfo);
-        public event ChatMessageReceived? OnChatMessageReceived;
+        ///// <summary>
+        ///// Event for chat message received
+        ///// </summary>
+        ///// <param name="chatMessage"></param>
+        //public delegate void ChatMessageReceived(ChatMessage chatMessage, MessageReceivedInfo messageReceivedInfo);
+        //public event ChatMessageReceived? OnChatMessageReceived;
 
-        /// <summary>
-        /// Event for chat file received
-        /// </summary>
-        /// <param name="chatFile"></param>
-        public delegate void ChatFileReceived(ChatFile chatFile, MessageReceivedInfo messageReceivedInfo);
-        public event ChatFileReceived? OnChatFileReceived;
+        ///// <summary>
+        ///// Event for chat file received
+        ///// </summary>
+        ///// <param name="chatFile"></param>
+        //public delegate void ChatFileReceived(ChatFile chatFile, MessageReceivedInfo messageReceivedInfo);
+        //public event ChatFileReceived? OnChatFileReceived;
+
+        ///// <summary>
+        ///// Event for ping request received
+        ///// </summary>
+        ///// <param name="pingRequest"></param>
+        //public delegate void PingRequestReceived(PingRequest pingRequest, MessageReceivedInfo messageReceivedInfo);
+        //public event PingRequestReceived? OnPingRequestReceived;
+
+        ///// <summary>
+        ///// Event for ping response received
+        ///// </summary>
+        ///// <param name="pingResponse"></param>
+        //public delegate void PingResponseReceived(PingResponse pingResponse, MessageReceivedInfo messageReceivedInfo);
+        //public event PingResponseReceived? OnPingResponseReceived;
 
         private List<IConversation> _conversations = new List<IConversation>();
 
         private IExternalMessageConverter<ChatFile> _chatFileMessageConverter = new ChatFileMessageConverter();
         private IExternalMessageConverter<ChatMessage> _chatMessageMessageConverter = new ChatMessageMessageConverter();
+        private IExternalMessageConverter<PingRequest> _pingRequestMessageConverter = new PingRequestMessageConverter();
+        private IExternalMessageConverter<PingResponse> _pingResponseMessageConverter = new PingResponseMessageConverter();
 
-        public ChatConnection(int receivePort)
+        public string LocalUserName { get; set; } = String.Empty;
+
+
+        public ChatConnection()
         {            
-            _connection = new Connection();
-            _connection.ReceivePort = receivePort;
+            _connection = new ConnectionUdp();            
             _connection.OnConnectionMessageReceived += _connection_OnConnectionMessageReceived;
         }
 
@@ -46,8 +67,9 @@ namespace CFChat
             get { return _conversations; }
         }
 
-        public void StartListening()
+        public void StartListening(int port)
         {
+            _connection.ReceivePort = port;
             _connection.StartListening();
         }
 
@@ -74,30 +96,123 @@ namespace CFChat
             _connection.SendMessage(_chatFileMessageConverter.GetConnectionMessage(chatFile), remoteEndpointInfo);
         }
 
+        /// <summary>
+        /// Send ping request
+        /// </summary>
+        /// <param name="pingRequest"></param>
+        /// <param name="remoteEndpointInfo"></param>
+        public void SendPingRequest(PingRequest pingRequest, EndpointInfo remoteEndpointInfo)
+        {
+            _connection.SendMessage(_pingRequestMessageConverter.GetConnectionMessage(pingRequest), remoteEndpointInfo);
+        }
+
+        /// <summary>
+        /// Send ping response
+        /// </summary>
+        /// <param name="pingRequest"></param>
+        /// <param name="remoteEndpointInfo"></param>
+        public void SendPingResponse(PingResponse pingResponse, EndpointInfo remoteEndpointInfo)
+        {
+            _connection.SendMessage(_pingResponseMessageConverter.GetConnectionMessage(pingResponse), remoteEndpointInfo);
+        }
+
+        /// <summary>
+        /// Handles ConnectionMessage received. Determines message type, converts to chat message, forwards it to the
+        /// correct IConversation instance.
+        ///
+        /// We assume that the UI has populated Conversations with a free IConversation that can be used if a message is received
+        /// for a new conversation.
+        /// </summary>
+        /// <param name="connectionMessage"></param>
+        /// <param name="messageReceivedInfo"></param>
         private void _connection_OnConnectionMessageReceived(ConnectionMessage connectionMessage, MessageReceivedInfo messageReceivedInfo)
         {
             switch(connectionMessage.TypeId)
             {
-                case MessageTypeIds.ChatMessage:
-                    if (OnChatMessageReceived != null)
+                case MessageTypeIds.ChatMessage:                    
                     {
                         // Get ChatMessage
                         var chatMessage = _chatMessageMessageConverter.GetExternalMessage(connectionMessage);
 
-                        // Notify
-                        OnChatMessageReceived(chatMessage, messageReceivedInfo);
+                        // Get conversation
+                        var conversation = Conversations.FirstOrDefault(c => c.ConversationId == chatMessage.ConversationId);
+
+                        // If no conversation then see if there's an unused IConversation
+                        if (conversation == null)
+                        {
+                            conversation = Conversations.FirstOrDefault(c => String.IsNullOrEmpty(c.ConversationId));                           
+                        }
+
+                        // Pass message to conversation
+                        if (conversation != null)
+                        {
+                            conversation.OnChatMessageReceived(chatMessage, messageReceivedInfo);
+                        }
                     }
                     break;
-                case MessageTypeIds.ChatFile:
-                    if (OnChatFileReceived!= null)
+                case MessageTypeIds.ChatFile:                    
                     {
                         // Get ChatFile
                         var chatFile = _chatFileMessageConverter.GetExternalMessage(connectionMessage);
 
-                        // Notify
-                        OnChatFileReceived(chatFile, messageReceivedInfo);
+                        // Get conversation
+                        var conversation = Conversations.FirstOrDefault(c => c.ConversationId == chatFile.ConversationId);
+
+                        // If no conversation then see if there's an unused IConversation
+                        if (conversation == null)
+                        {
+                            conversation = Conversations.FirstOrDefault(c => String.IsNullOrEmpty(c.ConversationId));
+                        }
+
+                        // Pass message to conversation
+                        if (conversation != null)
+                        {
+                            conversation.OnChatFileReceived(chatFile, messageReceivedInfo);
+                        }
                     }
                     break;
+                case MessageTypeIds.PingRequest:                                    
+                    {
+                        // Get PingRequest
+                        var pingRequest = _pingRequestMessageConverter.GetExternalMessage(connectionMessage);
+
+                        // Get conversation
+                        var conversation = Conversations.FirstOrDefault(c => c.ConversationId == pingRequest.ConversationId);
+
+                        // If no conversation then see if there's an unused IConversation
+                        if (conversation == null)
+                        {
+                            conversation = Conversations.FirstOrDefault(c => String.IsNullOrEmpty(c.ConversationId));
+                        }
+
+                        // Pass message to conversation
+                        if (conversation != null)
+                        {
+                            conversation.OnPingRequestReceived(pingRequest, messageReceivedInfo);
+                        }
+                     }
+                     break;
+                case MessageTypeIds.PingResponse:                    
+                    {
+                        // Get PingResponse
+                        var pingResponse = _pingResponseMessageConverter.GetExternalMessage(connectionMessage);
+
+                        // Get conversation
+                        var conversation = Conversations.FirstOrDefault(c => c.ConversationId == pingResponse.ConversationId);
+
+                        // If no conversation then see if there's an unused IConversation
+                        if (conversation == null)
+                        {
+                            conversation = Conversations.FirstOrDefault(c => String.IsNullOrEmpty(c.ConversationId));
+                        }
+
+                        // Pass message to conversation
+                        if (conversation != null)
+                        {
+                            conversation.OnPingResponseReceived(pingResponse, messageReceivedInfo);
+                        }
+                    }
+                    break;                          
             }
         }  
     }

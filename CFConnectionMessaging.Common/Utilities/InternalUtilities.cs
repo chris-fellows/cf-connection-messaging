@@ -11,8 +11,7 @@ using System.Threading.Tasks;
 namespace CFConnectionMessaging.Utilities
 {
     internal static class InternalUtilities
-    {
-       
+    {       
         public static byte[] Serialise(ConnectionMessage connectionMessage)
         {            
             // Serialize to JSON and to byte array

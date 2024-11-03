@@ -3,12 +3,8 @@
     /// <summary>
     /// Chat message
     /// </summary>
-    public class ChatMessage
+    public class ChatMessage : ChatBase
     {
-        public string ConversationId { get; set; } = String.Empty;
-
-        public string SenderName { get; set; } = String.Empty;
-
         public string Text { get; set; } = String.Empty;
     }
 }
