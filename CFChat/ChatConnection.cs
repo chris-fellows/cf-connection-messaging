@@ -9,42 +9,15 @@ using CFConnectionMessaging.Models;
 namespace CFChat
 {
     /// <summary>
-    /// Chat connection. Sends and receives chat messages via UDP connection.
+    /// Chat connection. Sends and receives chat messages via TCP connection.
     /// 
     /// The connection supports multiple conversations. Each message specifies a ConversationId so that the message
     /// is routed to the correct IConversation.
     /// </summary>
     public class ChatConnection
     {
-        private ConnectionUdp _connection;
-        
-        ///// <summary>
-        ///// Event for chat message received
-        ///// </summary>
-        ///// <param name="chatMessage"></param>
-        //public delegate void ChatMessageReceived(ChatMessage chatMessage, MessageReceivedInfo messageReceivedInfo);
-        //public event ChatMessageReceived? OnChatMessageReceived;
-
-        ///// <summary>
-        ///// Event for chat file received
-        ///// </summary>
-        ///// <param name="chatFile"></param>
-        //public delegate void ChatFileReceived(ChatFile chatFile, MessageReceivedInfo messageReceivedInfo);
-        //public event ChatFileReceived? OnChatFileReceived;
-
-        ///// <summary>
-        ///// Event for ping request received
-        ///// </summary>
-        ///// <param name="pingRequest"></param>
-        //public delegate void PingRequestReceived(PingRequest pingRequest, MessageReceivedInfo messageReceivedInfo);
-        //public event PingRequestReceived? OnPingRequestReceived;
-
-        ///// <summary>
-        ///// Event for ping response received
-        ///// </summary>
-        ///// <param name="pingResponse"></param>
-        //public delegate void PingResponseReceived(PingResponse pingResponse, MessageReceivedInfo messageReceivedInfo);
-        //public event PingResponseReceived? OnPingResponseReceived;
+        //private ConnectionUdp _connection;
+        private ConnectionTcp _connection;
 
         private List<IConversation> _conversations = new List<IConversation>();
 
@@ -55,10 +28,9 @@ namespace CFChat
 
         public string LocalUserName { get; set; } = String.Empty;
 
-
         public ChatConnection()
         {            
-            _connection = new ConnectionUdp();            
+            _connection = new ConnectionTcp();            
             _connection.OnConnectionMessageReceived += _connection_OnConnectionMessageReceived;
         }
 

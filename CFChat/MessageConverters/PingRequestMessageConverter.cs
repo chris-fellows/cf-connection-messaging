@@ -2,14 +2,12 @@
 using CFChat.Models;
 using CFConnectionMessaging.Interfaces;
 using CFConnectionMessaging.Models;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace CFChat.MessageConverters
 {
+    /// <summary>
+    /// Convert between PingRequest and ConnectionMessage
+    /// </summary>
     internal class PingRequestMessageConverter : IExternalMessageConverter<PingRequest>
     {
         public ConnectionMessage GetConnectionMessage(PingRequest pingRequest)
@@ -19,7 +17,12 @@ namespace CFChat.MessageConverters
                 Id = pingRequest.Id,
                 TypeId = MessageTypeIds.PingRequest,
                 Parameters = new List<ConnectionMessageParameter>()
-                {
+                {   
+                   new ConnectionMessageParameter()
+                   {
+                       Name = "ConversationId",
+                       Value = pingRequest.ConversationId
+                   },
                    new ConnectionMessageParameter()
                    {
                        Name = "SenderName",
@@ -34,6 +37,8 @@ namespace CFChat.MessageConverters
         {
             var pingRequest = new PingRequest()
             {
+                Id = connectionMessage.Id,                
+                ConversationId = connectionMessage.Parameters.First(p => p.Name == "ConversationId").Value,
                 SenderName = connectionMessage.Parameters.First(p => p.Name == "SenderName").Value,               
             };
 

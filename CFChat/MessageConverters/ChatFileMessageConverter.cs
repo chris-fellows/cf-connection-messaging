@@ -25,6 +25,11 @@ namespace CFChat.MessageConverters
                 {
                    new ConnectionMessageParameter()
                    {
+                       Name = "ConversationId",
+                       Value = chatFile.ConversationId
+                   },
+                   new ConnectionMessageParameter()
+                   {
                        Name = "SenderName",
                        Value = chatFile.SenderName
                    },
@@ -47,6 +52,8 @@ namespace CFChat.MessageConverters
         {
             var chatFile = new ChatFile()
             {
+                Id = connectionMessage.Id,                
+                ConversationId = connectionMessage.Parameters.First(p => p.Name == "ConversationId").Value,
                 SenderName = connectionMessage.Parameters.First(p => p.Name == "SenderName").Value,
                 Name = connectionMessage.Parameters.First(p => p.Name == "Name").Value,
                 Content = Convert.FromBase64String(connectionMessage.Parameters.First(p => p.Name == "Content").Value)

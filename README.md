@@ -1,25 +1,28 @@
 # cf-connection-messaging
 
-Class library for implementing messaging between clients over a logical connection (E.g. UDP - Obviously not a 
-connection). The purpose is to make it easy for client applications to send & receive messages without having to 
-worry about the underlying protocol.
+Class library for implementing messaging between clients over a logical connection (E.g. TCP). The purpose is 
+to make it easy for client applications to send & receive messages without having to worry about the underlying 
+protocol.
 
 The client application's messages are converted to a generic message (ConnectionMessage) which is serialized,
 transferred over the connection, deserialized and then passed to an event handler registered by the receiving
 client. The receiving client then converts the ConnectionMessage back to the application specific message.
+
+Alternatively then the client application could use the ConnectionMessage directly instead of creating a class
+for each message type.
 
 How to Send a Message
 ---------------------
 - Client calls Connection.StartListening to enable receiving of messages.
 - Client converts it's application specific message (E.g. ChatMessage) to a generic ConnectionMessage instance.
 - Client calls Connection.Send(ConnectionMessage, EndpointInfo) which serializes the message and sends it
-  via UDP.
+  via TCP.
 
 How to Receive a Message
 ------------------------
 - Client sets event handler Connection.OnConnectionMessage to handle received messages.
 - Client calls Connection.StartListening to enable receiving of messages.
-- Client receives packet(s) via UDP and deserializes them in to a ConnectionMessage instance.
+- Client receives packet(s) via TCP and deserializes them in to a ConnectionMessage instance.
 - Client event handler Connection.OnConnectionMessage(ConnectionMessage) fires, ConnectionMessage instance is 
   converted to an application specific message (E.g. ChatMessage).
 - Client processes application specific message.

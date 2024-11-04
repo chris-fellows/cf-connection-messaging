@@ -6,12 +6,14 @@ using System.Threading.Tasks;
 
 namespace CFConnectionMessaging.Models
 {
-    internal class Packet
+    public class Packet
     {
         public byte[] Data { get; set; }
 
-        public string EndpointIP { get; set; } = String.Empty;
+        public EndpointInfo Endpoint { get; set; }
 
-        public int EndpointPort { get; set; }
+        //public string EndpointIP { get; set; } = String.Empty;
+
+        //public int EndpointPort { get; set; }
     }
 }

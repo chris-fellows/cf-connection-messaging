@@ -2,6 +2,7 @@
 using CFConnectionMessaging.Utilities;
 using System.Net.Sockets;
 using System.Net;
+using static CFConnectionMessaging.ConnectionTcp;
 
 namespace CFConnectionMessaging
 {
@@ -13,7 +14,7 @@ namespace CFConnectionMessaging
     /// - Thread processes queue packets and deserializes them in to messages.
     /// - This class is thread safe so that multiple clients can use it simultaneously.
     /// </summary>
-    public class ConnectionUdp
+    public class ConnectionUdp : ConnectionSocketBase
     {        
         private List<Packet> _packets = new List<Packet>();
         private Thread? _receiveThread;
@@ -21,19 +22,14 @@ namespace CFConnectionMessaging
         private bool _listening;
         private Mutex _mutex = new Mutex();
 
+        private UdpClient _receiveClient;
+        private UdpClient _sendClient;
+
         private CancellationTokenSource? _cancellationTokenSource;
 
-        // Event handler for connection messages
+        //// Event handler for connection messages
         public delegate void ConnectionMessageReceived(ConnectionMessage connectionMessage, MessageReceivedInfo messageReceivedInfo);
-        public event ConnectionMessageReceived? OnConnectionMessageReceived;
-
-        private int _receivePort = 11000;       // Default
-
-        public int ReceivePort
-        {
-            get { return _receivePort; }
-            set { _receivePort = value; }
-        }
+        public event ConnectionMessageReceived? OnConnectionMessageReceived;      
             
         /// <summary>
         /// Starts listening for packets
@@ -51,6 +47,23 @@ namespace CFConnectionMessaging
 
             _cancellationTokenSource = new CancellationTokenSource();
             _listening = true;
+
+            IPEndPoint endpoint = new IPEndPoint(IPAddress.Any, ReceivePort);
+            
+            // Configure receive & send clients. Need to be bound to same address
+            _receiveClient = new UdpClient();
+            _receiveClient.ExclusiveAddressUse = false;
+            _receiveClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+            _receiveClient.Client.Bind(endpoint);            
+            //_receiveClient.Receive(ref ep1);            
+
+            _sendClient = new UdpClient();
+            _sendClient.ExclusiveAddressUse = false;
+            _sendClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.ReuseAddress, true);
+            _sendClient.Client.SendBufferSize = 1024 * 500;
+            //IPEndPoint ep2 = new IPEndPoint(IPAddress.Parse("X.Y.Z.W"), 1234);
+            _sendClient.Client.Bind(endpoint);
+            //sendClient.Send(new byte[] { ... }, sizeOfBuffer, ep2);
 
             _receiveThread = new Thread(ReceiveWorker);
             _receiveThread.Start();
@@ -86,14 +99,29 @@ namespace CFConnectionMessaging
 
             // Serialize message
             var data = InternalUtilities.Serialise(connectionMessage);
-
-            var client = new UdpClient();
+                        
+            /*
+            var client = new UdpClient();            
             IPEndPoint endpoint = new IPEndPoint(IPAddress.Parse(remoteEndpointInfo.Ip), remoteEndpointInfo.Port); // endpoint where server is listening
             client.Connect(endpoint);
-            client.Send(data);            
+            client.Send(data);
+            */
 
+            IPEndPoint endpoint = new IPEndPoint(IPAddress.Parse(remoteEndpointInfo.Ip), remoteEndpointInfo.Port); // endpoint where server is listening            
+            _sendClient.Send(data, endpoint);
+
+            //// Split in to packets. Increasing send buffer still causes an error            
+            //var packets = InternalUtilities.SplitByteArray(data, 50000);
+            //while (packets.Any())
+            //{
+            //    _sendClient.Send(packets[0], endpoint);
+            //    packets.RemoveAt(0);
+            //    Thread.Yield();
+            //}
+            
             _mutex.ReleaseMutex();
-        }    
+        }
+        
 
         /// <summary>
         /// Worker thread to process packets received
@@ -117,7 +145,7 @@ namespace CFConnectionMessaging
         public void ReceiveWorker()
         {         
             //int port = 11000;
-            UdpClient udpClient = new UdpClient(ReceivePort);            
+            //UdpClient udpClient = new UdpClient(ReceivePort);            
 
             while (!_cancellationTokenSource.IsCancellationRequested)
             {
@@ -135,19 +163,23 @@ namespace CFConnectionMessaging
                 // Receive packet
                 try
                 {
-                    var result = udpClient.ReceiveAsync(_cancellationTokenSource.Token).Result;
+                    //var result = udpClient.ReceiveAsync(_cancellationTokenSource.Token).Result;
+                    var result = _receiveClient.ReceiveAsync(_cancellationTokenSource.Token).Result;
 
                     if (!_cancellationTokenSource.IsCancellationRequested)
                     {
                         var packet = new Packet()
-                        {
-                            Data = result.Buffer,
-                            EndpointIP = result.RemoteEndPoint.Address.ToString(),
-                            EndpointPort = result.RemoteEndPoint.Port
+                        {                            
+                            Endpoint = new EndpointInfo()
+                            {
+                                Ip = result.RemoteEndPoint.Address.ToString(),
+                                Port = result.RemoteEndPoint.Port
+                            },
+                            Data = result.Buffer
                         };
                         _packets.Add(packet);
 
-                        Console.Write($"Received packet from {packet.EndpointIP}:{packet.EndpointPort}");
+                        Console.WriteLine($"Received packet from {packet.Endpoint.Ip}:{packet.Endpoint.Port}");
                     }
                 }
                 catch(OperationCanceledException ocException)   // Receive cancelled
@@ -162,138 +194,12 @@ namespace CFConnectionMessaging
             }
         }
 
-        /// <summary>
-        /// Process packets. Converts to ConnectionMessage, removes used packets, notifies client.       
-        /// </summary>
-        private void ProcessPackets()
+        protected override void ConnectMessageReceived(ConnectionMessage connectionMessage, MessageReceivedInfo messageReceivedInfo)
         {
-            if (_packets.Any())
+            if (OnConnectionMessageReceived != null)
             {
-                // Get all distinct endpoints
-                var endpoints = _packets.Select(p => $"{p.EndpointIP}\t{p.EndpointPort}").ToList();
-
-                // Process packets for each endpoint
-                foreach (var endpoint in endpoints)
-                {
-                    ProcessPackets(endpoint.Split('\t')[0], Convert.ToInt32(endpoint.Split('\t')[1]));
-                }
+                OnConnectionMessageReceived(connectionMessage, messageReceivedInfo);
             }
         }
-
-        /// <summary>
-        /// Process packets for endpoint
-        /// </summary>
-        private void ProcessPackets(string endpointIP, int endpointPort)
-        {                            
-            // Get all packets for client related to first packet
-            var packetsForEndpoint = _packets.Where(p => p.EndpointIP == endpointIP && p.EndpointPort == endpointPort).ToList();
-
-            // Try and get message header
-            var messageHeader = InternalUtilities.GetMessageHeader(packetsForEndpoint.First());
-            if (messageHeader != null)   // Header read from first packet
-            {
-                // Try and get connection message
-                var connectionMessage = GetConnectionMessage(messageHeader, packetsForEndpoint);
-                if (connectionMessage != null)
-                {
-                    // Remove all fully used packets
-                    _packets.RemoveAll(packet => packetsForEndpoint.Where(p => p.Data.Length == 0).Contains(packet));
-
-                    if (OnConnectionMessageReceived != null)
-                    {
-                        OnConnectionMessageReceived(connectionMessage, new MessageReceivedInfo()
-                        {
-                            ReceivedTime = DateTimeOffset.UtcNow,
-                            RemoteEndpointInfo = new EndpointInfo()
-                            {
-                                Ip = endpointIP,
-                                Port = endpointPort
-                            }
-                        });
-                    }
-                }
-            }                            
-        }
-
-        //public void AddPacketForTesting(Packet packet)
-        //{
-        //    _packets.Add(packet);
-        //}
-
-        /// <summary>
-        /// Gets first ConnectionMessage if sufficient packets received. Packet.Data will be updated to remove any data
-        /// used. We need to consider that we may have a packet with the end of message #1 and the start of message #2
-        /// if the client is sending messages in quick succession.
-        /// </summary>
-        /// <param name="messageHeader"></param>
-        /// <param name="packetsForEndpoint"></param>
-        /// <returns></returns>
-        private ConnectionMessage GetConnectionMessage(MessageHeader messageHeader, List<Packet> packetsForEndpoint)
-        {
-            // Get total of all packets
-            int totalPacketBytes = packetsForEndpoint.Sum(p => p.Data.Length);
-
-            // Check that we have sufficient data
-            if (totalPacketBytes >= messageHeader.PayloadLength)    // Sufficient data packets for message
-            {                             
-                // Set array of payload to create from each packet
-                byte[] payloadData = new byte[messageHeader.PayloadLength];
-                int payloadOffset = 0;                
-                
-                // Concatenate packet payloads
-                var packet = packetsForEndpoint.First();
-                int packetIndex = -1;
-                do
-                {
-                    packetIndex++;
-                   
-                    System.Diagnostics.Debug.WriteLine($"{packetIndex} Packet.Data.Length={packet.Data.Length}");
-
-                    // Calculate bytes remaining to copy. We may get a situation where a packet contains multiple ConnectionMessage
-                    // instances and so we only need the first part of Packet.Data
-                    var bytesRemainingToCopy = messageHeader.PayloadLength - payloadOffset;
-
-                    // Determine position in Packet.Data to copy from to payloadData
-                    var sourceOffset = packet == packetsForEndpoint.First() ?
-                                            messageHeader.HeaderLength :   // For 1st packet then copy from after header
-                                            0;                  // For 2nd+ packet then no header, so copy from start
-
-                    // Determine how many packet bytes to copy to payloadData
-                    var packetBytesToCopy = packet.Data.Length - sourceOffset;  // Default to all
-                    var newData = new byte[0];      // Default to using all data
-                    if (packetBytesToCopy > bytesRemainingToCopy)   // Only need some of the packet
-                    {
-                        packetBytesToCopy = bytesRemainingToCopy;
-
-                        // Remove used data
-                        newData = new byte[packet.Data.Length - packetBytesToCopy];
-                        Buffer.BlockCopy(packet.Data, packetBytesToCopy, newData, 0, packet.Data.Length - packetBytesToCopy);
-                        int zzz = 1000;
-                    }                                
-                   
-                    // Copy from Packet.Data to payloadData
-                    Buffer.BlockCopy(packet.Data, sourceOffset, payloadData, payloadOffset, packetBytesToCopy);
-
-                    // Set remaining packet data (if any). We may have a packet with the end of message #1 and the start of
-                    // message #2
-                    packet.Data = newData;
-
-                    // Move payload offset for next packet to copy in
-                    payloadOffset += packetBytesToCopy;
-                   
-                    System.Diagnostics.Debug.WriteLine($"{packetIndex} bytesRemainingToCopy={bytesRemainingToCopy}, sourceOffset={sourceOffset}, packetBytesToCopy={packetBytesToCopy}, payloadOffset={payloadOffset}");
-
-                    // Set next packet
-                    packet = packet != packetsForEndpoint.Last() ? packetsForEndpoint[packetsForEndpoint.IndexOf(packet) + 1] : null;
-                    
-                } while (payloadOffset < messageHeader.PayloadLength);
-
-                // Deserialize payload
-                var connectionMessage = InternalUtilities.DeserialiseToConnectionMessage(payloadData);
-                return connectionMessage;                                
-            }            
-
-            return null;
-        }        
     }
 }

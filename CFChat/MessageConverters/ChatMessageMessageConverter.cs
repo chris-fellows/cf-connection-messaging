@@ -23,6 +23,11 @@ namespace CFChat.MessageConverters
                 TypeId = MessageTypeIds.ChatMessage,                
                 Parameters = new List<ConnectionMessageParameter>()
                 {
+                          new ConnectionMessageParameter()
+                   {
+                       Name = "ConversationId",
+                       Value = chatMessage.ConversationId
+                   },
                     new ConnectionMessageParameter()
                    {
                        Name = "SenderName",
@@ -32,12 +37,7 @@ namespace CFChat.MessageConverters
                    {
                        Name = "Text",
                        Value = chatMessage.Text
-                   },
-                   new ConnectionMessageParameter()
-                   {
-                       Name = "Encrypted",
-                       Value = "0"
-                   }
+                   }                  
                 }
             };
             return connectionMessage;
@@ -47,6 +47,8 @@ namespace CFChat.MessageConverters
         {
             var chatMessage = new ChatMessage()
             {
+                Id = connectionMessage.Id,               
+                ConversationId = connectionMessage.Parameters.First(p => p.Name == "ConversationId").Value,
                 SenderName = connectionMessage.Parameters.First(p => p.Name == "SenderName").Value,
                 Text = connectionMessage.Parameters.First(p => p.Name == "Text").Value
             };

@@ -8,8 +8,14 @@ namespace CFChat.Interfaces
     /// </summary>
     public interface IConversation
     {
+        /// <summary>
+        /// Unique Id
+        /// </summary>
         string ConversationId { get; }
 
+        /// <summary>
+        /// Remote endpoint
+        /// </summary>
         EndpointInfo RemoteEndpointInfo { get; }
 
         /// <summary>
