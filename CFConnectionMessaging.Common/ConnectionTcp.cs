@@ -8,7 +8,7 @@ namespace CFConnectionMessaging
     /// <summary>
     ///  Connection for ConnectionMessage instances with transport via TCP.
     /// </summary>
-    public class ConnectionTcp : ConnectionSocketBase
+    public class ConnectionTcp : ConnectionSocketBase, IDisposable
     {
         private Mutex _mutex = new Mutex();        
         private Thread? _listenerThread;
@@ -39,6 +39,18 @@ namespace CFConnectionMessaging
         //    get { return _receivePort; }
         //    set { _receivePort = value; }
         //}
+
+        public void Dispose()
+        {
+            StopListening();
+
+            foreach(var clientInfo in _clientInfos)
+            {
+                clientInfo.TcpClient?.Dispose();
+            }
+        }
+
+        public bool IsListening => _listenerThread != null;
 
         public void StartListening()
         {
@@ -131,7 +143,8 @@ namespace CFConnectionMessaging
             while (!_cancellationTokenSource.Token.IsCancellationRequested)
             {
                 // Receive data from clients
-                foreach(var clientInfo in _clientInfos.Where(ci => ci.Stream.DataAvailable))
+                var clientInfos = _clientInfos.Where(ci => ci.Stream.DataAvailable).ToList();
+                foreach (var clientInfo in clientInfos)
                 {
                     var receiveTask = ReceiveAsync(clientInfo);
                     receiveTasks.Add(receiveTask);

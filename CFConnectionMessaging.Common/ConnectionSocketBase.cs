@@ -26,7 +26,7 @@ namespace CFConnectionMessaging
             if (_packets.Any())
             {
                 // Get all distinct endpoints
-                var endpoints = _packets.Select(p => $"{p.Endpoint.Ip}\t{p.Endpoint.Port}").ToList();
+                var endpoints = _packets.Select(p => $"{p.Endpoint.Ip}\t{p.Endpoint.Port}").Distinct().ToList();
 
                 // Process packets for each endpoint
                 foreach (var endpoint in endpoints)
@@ -58,12 +58,12 @@ namespace CFConnectionMessaging
                     // Notify
                     ConnectMessageReceived(connectionMessage, new MessageReceivedInfo()
                     {
-                        ReceivedTime = DateTimeOffset.UtcNow,
+                        ReceivedTime = DateTimeOffset.UtcNow,    // Doesn't really need to be packet receive time                        
                         RemoteEndpointInfo = new EndpointInfo()
                         {
                             Ip = endpointIP,
                             Port = endpointPort
-                        }
+                        }                        
                     });
                 }
             }
@@ -92,7 +92,7 @@ namespace CFConnectionMessaging
         /// <param name="messageHeader"></param>
         /// <param name="packetsForEndpoint"></param>
         /// <returns>ConnectionMessage if sufficient packets received</returns>
-        private ConnectionMessage? GetConnectionMessage(MessageHeader messageHeader, List<Packet> packetsForEndpoint)
+        private static ConnectionMessage? GetConnectionMessage(MessageHeader messageHeader, List<Packet> packetsForEndpoint)
         {
             // Get total of all packets
             int totalPacketBytes = packetsForEndpoint.Sum(p => p.Data.Length);
