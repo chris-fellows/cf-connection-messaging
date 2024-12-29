@@ -1,5 +1,7 @@
-﻿using CFConnectionMessaging.Models;
+﻿using CFConnectionMessaging.Exceptions;
+using CFConnectionMessaging.Models;
 using CFConnectionMessaging.Utilities;
+using System.ComponentModel.DataAnnotations;
 using System.Net;
 using System.Net.Sockets;
 
@@ -23,30 +25,61 @@ namespace CFConnectionMessaging
             public TcpClient? TcpClient { get; set; }
 
             public NetworkStream? Stream { get; set; }
-            
+         
+            public EndpointInfo EndpointInfo { get; set; }
         }
 
         private List<ClientInfo> _clientInfos = new List<ClientInfo>();    
 
-        // Event handler for connection messages
+        // Event for connection message received
         public delegate void ConnectionMessageReceived(ConnectionMessage connectionMessage, MessageReceivedInfo messageReceivedInfo);
         public event ConnectionMessageReceived? OnConnectionMessageReceived;
 
-        //private int _receivePort = 11000;       // Default
+        /// <summary>
+        /// Event for client connected
+        /// </summary>
+        /// <param name="endpointInfo"></param>
+        public delegate void ClientConnected(EndpointInfo endpointInfo);
+        public event ClientConnected? OnClientConnected;
 
-        //public int ReceivePort
-        //{
-        //    get { return _receivePort; }
-        //    set { _receivePort = value; }
-        //}
-
+        /// <summary>
+        /// Event for client disconnected
+        /// </summary>
+        /// <param name="endpointInfo"></param>
+        public delegate void ClientDisconnected(EndpointInfo endpointInfo);
+        public event ClientDisconnected? OnClientDisconnected;
+    
         public void Dispose()
         {
             StopListening();
 
-            foreach(var clientInfo in _clientInfos)
+            // Clean up clients
+            while(_clientInfos.Any())
             {
-                clientInfo.TcpClient?.Dispose();
+                _clientInfos[0].TcpClient?.Close();
+                _clientInfos[0].TcpClient?.Dispose();
+                _clientInfos.RemoveAt(0);
+            }            
+        }
+
+        /// <summary>
+        /// Endpoints for clients
+        /// </summary>
+        public List<EndpointInfo> ClientRemoteEndpoints
+        {
+            get
+            {
+                var endpoints = _clientInfos.Select(clientInfo =>
+                {
+                    IPEndPoint remoteEndpoint = clientInfo.TcpClient.Client.RemoteEndPoint as IPEndPoint;
+                    return new EndpointInfo()
+                    {
+                        Ip = remoteEndpoint.Address.ToString(),
+                        Port = remoteEndpoint.Port
+                    };
+                }).ToList();
+
+                return endpoints;
             }
         }
 
@@ -105,18 +138,36 @@ namespace CFConnectionMessaging
                     // Accept TCP client
                     var tcpClient = AcceptTcpClientAsync(tcpLisener).Result;
                     if (tcpClient != null)
-                    {
+                    {                        
                         var clientInfo = new ClientInfo()
                         {
                             TcpClient = tcpClient,
-                            Stream = tcpClient.GetStream()
+                            Stream = tcpClient.GetStream(),                            
                         };
                         _clientInfos.Add(clientInfo);
 
                         IPEndPoint remoteEndpoint = clientInfo.TcpClient.Client.RemoteEndPoint as IPEndPoint;
                         Console.WriteLine($"Client {remoteEndpoint.Address.ToString()}:{remoteEndpoint.Port} connected");
+
+                        // Notify connected
+                        if (OnClientConnected != null)
+                        {
+                            OnClientConnected(new EndpointInfo() { Ip = remoteEndpoint.Address.ToString(), Port = remoteEndpoint.Port });
+                        }
                     }
                 }
+                catch(AggregateException aggregateException)
+                {
+                    if (aggregateException.InnerException != null &&
+                        aggregateException.InnerException is TaskCanceledException)
+                    {
+                        // No action
+                    }
+                    else
+                    {
+                        throw;
+                    }
+                }                
                 catch(SocketException socketException)
                 {
                     System.Diagnostics.Debug.WriteLine($"Error accepting TCP client: {socketException.Message}");
@@ -125,11 +176,76 @@ namespace CFConnectionMessaging
 
                 System.Threading.Thread.Yield();
             }
+
+            tcpLisener.Stop();
         }
 
         private async Task<TcpClient?> AcceptTcpClientAsync(TcpListener tcpListener)
         {
             return await tcpListener.AcceptTcpClientAsync(_cancellationTokenSource.Token);
+        }
+
+        /// <summary>
+        /// Checks if client is connection. TcpClient.Connected doesn't report the current state, only last state
+        /// </summary>
+        /// <param name="tcpClient"></param>
+        /// <returns></returns>
+        private bool IsClientConnected(TcpClient tcpClient)
+        {
+            if (tcpClient.Connected)
+            {
+                var connected = !(tcpClient.Client.Poll(1, SelectMode.SelectRead) && tcpClient.Client.Available == 0);
+                return connected;
+            }
+
+            /*
+            if (tcpClient.Client.Poll(0, SelectMode.SelectRead))
+            {
+                byte[] data = new byte[1];
+                if (tcpClient.Client.Receive(data, SocketFlags.Peek) == 0)
+                {
+                    return false;
+                }            
+                else
+                {
+                    int xxx = 1000;
+                }
+            }
+            */
+
+            return false;
+        }
+
+        /// <summary>
+        /// Checks for disconnected clients
+        /// </summary>
+        private void CheckClientsDisconnected()
+        {
+            // Get disconnected clients
+            var clientInfos = _clientInfos.Where(ci => !IsClientConnected(ci.TcpClient)).ToList();
+
+            // Clean up disconnected clients
+            while(clientInfos.Any())
+            {
+                var clientInfo = clientInfos[0];
+                IPEndPoint remoteEndpoint = clientInfo.TcpClient.Client.RemoteEndPoint as IPEndPoint;
+
+                clientInfo.Stream.Close();
+                clientInfo.TcpClient.Close();                
+
+                // Notify disconnected
+                if (OnClientDisconnected != null)
+                {
+                    OnClientDisconnected(new EndpointInfo()
+                    {
+                        Ip = remoteEndpoint.Address.ToString(),
+                        Port = remoteEndpoint.Port
+                    });
+                }
+
+                clientInfos.Remove(clientInfo);
+                _clientInfos.Remove(clientInfo);
+            }
         }
 
         /// <summary>
@@ -140,6 +256,7 @@ namespace CFConnectionMessaging
             var receiveTasks = new List<Task>();
 
             // Run until cancelled
+            var lastCheckClients = DateTimeOffset.UtcNow;
             while (!_cancellationTokenSource.Token.IsCancellationRequested)
             {
                 // Receive data from clients
@@ -163,6 +280,13 @@ namespace CFConnectionMessaging
                 if (_packets.Any())
                 {
                     ProcessPackets();
+                }
+
+                // Check clients
+                if (lastCheckClients.AddSeconds(30) <= DateTimeOffset.UtcNow)
+                {
+                    lastCheckClients = DateTimeOffset.UtcNow;
+                    CheckClientsDisconnected();
                 }
 
                 System.Threading.Thread.Sleep(5);
@@ -215,30 +339,59 @@ namespace CFConnectionMessaging
         /// <param name="remoteEndpointInfo"></param>
         public void SendMessage(ConnectionMessage connectionMessage, EndpointInfo remoteEndpointInfo)
         {
+            // Serialize message
+            var data = InternalUtilities.Serialise(connectionMessage);
+
             // Get ClientInfo for remote endpoint
             var clientInfo = GetClientInfoByRemoteEndpoint(remoteEndpointInfo);
 
             // If no connection then connect
             if (clientInfo == null)
-            {                
-                System.Diagnostics.Debug.WriteLine($"Connecting to {remoteEndpointInfo.Ip}:{remoteEndpointInfo.Port}");
-                var tcpClient = new TcpClient();
-                tcpClient.Connect(IPAddress.Parse(remoteEndpointInfo.Ip), remoteEndpointInfo.Port);
-                System.Diagnostics.Debug.WriteLine($"Connected to {remoteEndpointInfo.Ip}:{remoteEndpointInfo.Port}");
-
-                clientInfo = new ClientInfo()
+            {
+                try
                 {
-                    TcpClient = tcpClient,
-                    Stream = tcpClient.GetStream()
-                };
-                _clientInfos.Add(clientInfo);
+                    clientInfo = ConnectToClient(remoteEndpointInfo);
+                }
+                catch (Exception exception)
+                {
+                    throw new ConnectionException($"Error connecting to {remoteEndpointInfo.Ip}:{remoteEndpointInfo.Port}", exception);
+                }
             }
 
-            // Serialize message
-            var data = InternalUtilities.Serialise(connectionMessage);
-
             // Send data
-            clientInfo.TcpClient.Client.Send(data);                       
+            clientInfo.TcpClient.Client.Send(data);            
+        }
+
+        /// <summary>
+        /// Connects to client
+        /// </summary>
+        /// <param name="remoteEndpointInfo"></param>
+        /// <returns></returns>
+        private ClientInfo ConnectToClient(EndpointInfo remoteEndpointInfo)
+        {
+            System.Diagnostics.Debug.WriteLine($"Connecting to {remoteEndpointInfo.Ip}:{remoteEndpointInfo.Port}");
+            var tcpClient = new TcpClient();
+            tcpClient.Connect(IPAddress.Parse(remoteEndpointInfo.Ip), remoteEndpointInfo.Port);
+            System.Diagnostics.Debug.WriteLine($"Connected to {remoteEndpointInfo.Ip}:{remoteEndpointInfo.Port}");
+
+            var clientInfo = new ClientInfo()
+            {
+                TcpClient = tcpClient,
+                Stream = tcpClient.GetStream()
+            };
+            _clientInfos.Add(clientInfo);
+
+            // Notify client connected 
+            if (OnClientConnected != null)
+            {
+                OnClientConnected(new EndpointInfo()
+                {
+                    Ip = remoteEndpointInfo.Ip,
+                    Port = remoteEndpointInfo.Port
+                });
+            }
+
+            return clientInfo;
         }
 
         /// <summary>
@@ -247,14 +400,20 @@ namespace CFConnectionMessaging
         /// <param name="endpointInfo"></param>
         /// <returns></returns>
         private ClientInfo? GetClientInfoByRemoteEndpoint(EndpointInfo endpointInfo)
-        {                    
+        {                        
+            // Map to IPv6 address
+            var address = IPAddress.Parse($"{endpointInfo.Ip}").MapToIPv6();            
+
+            // Check each client
             foreach (var clientInfo in _clientInfos)
             {
-                IPEndPoint clientRemoteEndpoint = clientInfo.TcpClient.Client.RemoteEndPoint as IPEndPoint;               
-                if (clientRemoteEndpoint.Address.ToString() == endpointInfo.Ip &&
+                IPEndPoint clientRemoteEndpoint = clientInfo.TcpClient.Client.RemoteEndPoint as IPEndPoint;
+                IPAddress clientAddress = clientRemoteEndpoint.Address.MapToIPv6();
+
+                if (clientAddress.ToString().Equals(address.ToString()) && 
                     clientRemoteEndpoint.Port == endpointInfo.Port)
                 {
-                    return clientInfo;                    
+                    return clientInfo;
                 }
             }
 
@@ -267,6 +426,6 @@ namespace CFConnectionMessaging
             {
                 OnConnectionMessageReceived(connectionMessage, messageReceivedInfo);
             }
-        }
+        }    
     }
 }
