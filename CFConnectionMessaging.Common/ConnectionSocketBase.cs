@@ -8,7 +8,7 @@ namespace CFConnectionMessaging
     /// </summary>
     public abstract class ConnectionSocketBase
     {
-        protected List<Packet> _packets = new List<Packet>();
+        //protected List<Packet> _packets = new List<Packet>();
 
         protected int _receivePort = 11000;       // Default
 
@@ -21,28 +21,25 @@ namespace CFConnectionMessaging
         /// <summary>
         /// Process packets. Converts to ConnectionMessage, removes used packets, notifies client.       
         /// </summary>
-        protected void ProcessPackets()
+        protected void ProcessPackets(List<Packet> packets)
         {
-            if (_packets.Any())
-            {
-                // Get all distinct endpoints
-                var endpoints = _packets.Select(p => $"{p.Endpoint.Ip}\t{p.Endpoint.Port}").Distinct().ToList();
+            // Get all distinct endpoints. Should only be 1
+            var endpoints = packets.Select(p => $"{p.Endpoint.Ip}\t{p.Endpoint.Port}").Distinct().ToList();
 
-                // Process packets for each endpoint
-                foreach (var endpoint in endpoints)
-                {
-                    ProcessPackets(endpoint.Split('\t')[0], Convert.ToInt32(endpoint.Split('\t')[1]));
-                }
-            }
+            // Process packets for each endpoint
+            foreach (var endpoint in endpoints)
+            {
+                ProcessPackets(packets, endpoint.Split('\t')[0], Convert.ToInt32(endpoint.Split('\t')[1]));
+            }         
         }
 
         /// <summary>
         /// Process packets for endpoint
         /// </summary>
-        private void ProcessPackets(string endpointIP, int endpointPort)
+        private void ProcessPackets(List<Packet> packets, string endpointIP, int endpointPort)
         {
             // Get all packets for client related to first packet
-            var packetsForEndpoint = _packets.Where(p => p.Endpoint.Ip == endpointIP && p.Endpoint.Port == endpointPort).ToList();
+            var packetsForEndpoint = packets.Where(p => p.Endpoint.Ip == endpointIP && p.Endpoint.Port == endpointPort).ToList();
 
             // Try and get message header
             var messageHeader = InternalUtilities.GetMessageHeader(packetsForEndpoint.First());
@@ -53,7 +50,7 @@ namespace CFConnectionMessaging
                 if (connectionMessage != null)
                 {
                     // Remove all fully used packets
-                    _packets.RemoveAll(packet => packetsForEndpoint.Where(p => p.Data.Length == 0).Contains(packet));
+                    packets.RemoveAll(packet => packetsForEndpoint.Where(p => p.Data.Length == 0).Contains(packet));
 
                     // Notify
                     ConnectMessageReceived(connectionMessage, new MessageReceivedInfo()
@@ -144,7 +141,7 @@ namespace CFConnectionMessaging
                     // Move payload offset for next packet to copy in
                     payloadOffset += packetBytesToCopy;
 
-                    System.Diagnostics.Debug.WriteLine($"{packetIndex} bytesRemainingToCopy={bytesRemainingToCopy}, sourceOffset={sourceOffset}, packetBytesToCopy={packetBytesToCopy}, payloadOffset={payloadOffset}");
+                    //System.Diagnostics.Debug.WriteLine($"{packetIndex} bytesRemainingToCopy={bytesRemainingToCopy}, sourceOffset={sourceOffset}, packetBytesToCopy={packetBytesToCopy}, payloadOffset={payloadOffset}");
 
                     // Set next packet
                     packet = packet != packetsForEndpoint.Last() ? packetsForEndpoint[packetsForEndpoint.IndexOf(packet) + 1] : null;

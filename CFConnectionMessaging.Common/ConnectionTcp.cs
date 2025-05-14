@@ -11,8 +11,7 @@ namespace CFConnectionMessaging
     ///  Connection for ConnectionMessage instances with transport via TCP.
     /// </summary>
     public class ConnectionTcp : ConnectionSocketBase, IDisposable
-    {
-        private Mutex _mutex = new Mutex();        
+    {            
         private Thread? _listenerThread;
         private Thread? _receiveThread;
 
@@ -21,12 +20,23 @@ namespace CFConnectionMessaging
         private CancellationTokenSource? _cancellationTokenSource;        
 
         private class ClientInfo
-        {
+        {            
             public TcpClient? TcpClient { get; set; }
 
             public NetworkStream? Stream { get; set; }
          
             public EndpointInfo EndpointInfo { get; set; }
+
+            /// <summary>
+            /// Time message last sent or received. May be used for closing connections that have been inactive
+            /// after a timeout
+            /// </summary>
+            public DateTimeOffset? LastMessageTime { get; set; }
+
+            /// <summary>
+            /// Received packets
+            /// </summary>
+            public List<Packet> Packets { get; set; } = new List<Packet>();
         }
 
         private List<ClientInfo> _clientInfos = new List<ClientInfo>();    
@@ -68,7 +78,7 @@ namespace CFConnectionMessaging
         public List<EndpointInfo> ClientRemoteEndpoints
         {
             get
-            {
+            {                
                 var endpoints = _clientInfos.Select(clientInfo =>
                 {
                     IPEndPoint remoteEndpoint = clientInfo.TcpClient.Client.RemoteEndPoint as IPEndPoint;
@@ -141,6 +151,7 @@ namespace CFConnectionMessaging
                     {                        
                         var clientInfo = new ClientInfo()
                         {
+                            LastMessageTime = DateTimeOffset.UtcNow,
                             TcpClient = tcpClient,
                             Stream = tcpClient.GetStream(),                            
                         };
@@ -266,7 +277,7 @@ namespace CFConnectionMessaging
                     var receiveTask = ReceiveAsync(clientInfo);
                     receiveTasks.Add(receiveTask);
                 }
-                System.Threading.Thread.Sleep(5);
+                System.Threading.Thread.Sleep(1);
 
                 // Wait for receive complete
                 if (receiveTasks.Any())
@@ -274,22 +285,23 @@ namespace CFConnectionMessaging
                     Task.WaitAll(receiveTasks.ToArray());
                     receiveTasks.Clear();                    
                 }
-                System.Threading.Thread.Sleep(5);
+                System.Threading.Thread.Sleep(1);
 
                 // Process packets
-                if (_packets.Any())
+                clientInfos = _clientInfos.Where(ci => ci.Packets.Any()).ToList();
+                foreach (var clientInfo in clientInfos)
                 {
-                    ProcessPackets();
-                }
+                    ProcessPackets(clientInfo.Packets);
+                }                                
 
                 // Check clients
-                if (lastCheckClients.AddSeconds(30) <= DateTimeOffset.UtcNow)
+                if (lastCheckClients.AddSeconds(5) <= DateTimeOffset.UtcNow)    // Was 30
                 {
                     lastCheckClients = DateTimeOffset.UtcNow;
                     CheckClientsDisconnected();
                 }
 
-                System.Threading.Thread.Sleep(5);
+                System.Threading.Thread.Sleep(1);
             }
         }       
 
@@ -300,11 +312,11 @@ namespace CFConnectionMessaging
         /// <returns></returns>
         private Task ReceiveAsync(ClientInfo clientInfo)
         {
-            return Task.Factory.StartNew(() =>
+            return Task.Run(() =>
             {
                 var data = new byte[1024 * 50];     // Use same array for all packets. No need to reset between packets
                 while (clientInfo.Stream.DataAvailable)
-                {
+                {                    
                     var byteCount = clientInfo.Stream.Read(data, 0, data.Length);
                     if (byteCount > 0)
                     {
@@ -315,19 +327,21 @@ namespace CFConnectionMessaging
                             Endpoint = new EndpointInfo()
                             {
                                 Ip = remoteEndpoint.Address.ToString(),
-                                Port = remoteEndpoint.Port = remoteEndpoint.Port
+                                Port = remoteEndpoint.Port
                             },
                             Data = new byte[byteCount]
                         };
                         Buffer.BlockCopy(data, 0, packet.Data, 0, byteCount);
 
-                        _mutex.WaitOne();
-                        _packets.Add(packet);
-                        _mutex.ReleaseMutex();
+                        //_mutex.WaitOne();
+                        clientInfo.Packets.Add(packet);
+                        //_mutex.ReleaseMutex();
 
-                        System.Diagnostics.Debug.WriteLine($"Packet received from {packet.Endpoint.Ip}:{packet.Endpoint.Port} ({packet.Data.Length} bytes)");
+                        //System.Diagnostics.Debug.WriteLine($"Packet received from {packet.Endpoint.Ip}:{packet.Endpoint.Port} ({packet.Data.Length} bytes)");
                     }
                     Thread.Sleep(5);
+
+                    clientInfo.LastMessageTime = DateTimeOffset.UtcNow;
                 }
             });
         }
@@ -358,8 +372,13 @@ namespace CFConnectionMessaging
                 }
             }
 
+            //Console.WriteLine($"Sending data for {connectionMessage.TypeId} to {remoteEndpointInfo.Ip}:{remoteEndpointInfo.Port}");
+
             // Send data
-            clientInfo.TcpClient.Client.Send(data);            
+            clientInfo.TcpClient.Client.Send(data);
+            clientInfo.LastMessageTime = DateTimeOffset.UtcNow;
+
+            //Console.WriteLine($"Sent data to {remoteEndpointInfo.Ip}:{remoteEndpointInfo.Port}");
         }
 
         /// <summary>
@@ -369,13 +388,13 @@ namespace CFConnectionMessaging
         /// <returns></returns>
         private ClientInfo ConnectToClient(EndpointInfo remoteEndpointInfo)
         {
-            System.Diagnostics.Debug.WriteLine($"Connecting to {remoteEndpointInfo.Ip}:{remoteEndpointInfo.Port}");
+            //Console.WriteLine($"Connecting to {remoteEndpointInfo.Ip}:{remoteEndpointInfo.Port}");
             var tcpClient = new TcpClient();
             tcpClient.Connect(IPAddress.Parse(remoteEndpointInfo.Ip), remoteEndpointInfo.Port);
-            System.Diagnostics.Debug.WriteLine($"Connected to {remoteEndpointInfo.Ip}:{remoteEndpointInfo.Port}");
+            //Console.WriteLine($"Connected to {remoteEndpointInfo.Ip}:{remoteEndpointInfo.Port}");
 
             var clientInfo = new ClientInfo()
-            {
+            {                
                 TcpClient = tcpClient,
                 Stream = tcpClient.GetStream()
             };
